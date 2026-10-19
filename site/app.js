@@ -1,4 +1,4 @@
-import { uid, localDate, number, fmt, escapeHTML as esc, formatDate, emptyState, activeCycle, nextPrescription, workoutForDay, finalizeWorkout, stats, sessionVolume, sessionSets, allBilboSets, weeklyVolume, validateBackup, starterExercises } from './core.js';
+import { uid, localDate, number, fmt, escapeHTML as esc, formatDate, emptyState, activeCycle, nextPrescription, workoutForDay, finalizeWorkout, stats, sessionVolume, sessionSets, allBilboSets, bilboRmSeries, estimateBilbo1RM, weeklyVolume, validateBackup, starterExercises } from './core.js';
 import { loadState, saveState, exportState } from './store.js';
 
 let state = loadState();
@@ -81,6 +81,7 @@ function exerciseCard(e,i) {
   const exercise = ex(e.exerciseId);
   const c = activeCycle(state,e.exerciseId);
   const recommendation = nextPrescription(c,state.sessions);
+  const liveRm = estimateBilbo1RM(e.bilbo.weight,e.bilbo.reps);
   const warning = c && e.bilbo.cycleId!==c.id ? 'Esta serie pertenece al ciclo anterior' : recommendation.label;
   return `<div class="card exercise-card"><div class="card-title"><div class="exercise-head"><div class="exercise-num">${i+1}</div><div><strong>${esc(exercise?.name||'Ejercicio eliminado')}</strong><small>${esc(exercise?.category||'Personalizado')} ${c?`· Ciclo ${c.number}`:'· Sin ciclo'}</small></div></div><button class="icon-btn" aria-label="Quitar ejercicio" title="Quitar ejercicio" data-action="remove-exercise" data-id="${esc(e.id)}">${svg('trash')}</button></div>
     <div class="bilbo-panel"><div class="bilbo-panel-head"><strong>${svg('bolt',14)} SERIE BILBO</strong><small>Potencia + control</small></div><div class="series-grid">
@@ -88,7 +89,7 @@ function exerciseCard(e,i) {
     <div class="field"><label>Reps</label><input aria-label="Repeticiones Bilbo ${esc(exercise?.name||'')}" type="number" min="1" max="500" step="1" inputmode="numeric" data-eid="${esc(e.id)}" data-part="bilbo" data-key="reps" placeholder="—" value="${esc(e.bilbo.reps??'')}"></div>
     <div class="field"><label>RIR</label><input aria-label="RIR Bilbo" type="number" min="0" max="20" step="1" data-eid="${esc(e.id)}" data-part="bilbo" data-key="rir" value="${esc(e.bilbo.rir??2)}"></div>
     <div class="field speed-field"><label>Velocidad</label><select aria-label="Calidad de velocidad" data-eid="${esc(e.id)}" data-part="bilbo" data-key="speed">${options([['explosiva','Explosiva'],['estable','Controlada'],['lenta','Lenta']],e.bilbo.speed)}</select></div></div>
-    <div class="hint-box" style="margin-top:12px"><strong>${c?`Objetivo ≥ ${c.minReps} reps · `:'Ciclo no configurado · '}</strong>${esc(warning)}${c && recommendation.weight!==null?` · Próxima carga sugerida: ${fmt(recommendation.weight)} ${u()}`:''}</div></div>
+    <div class="hint-box" style="margin-top:12px"><strong>${c?`Objetivo ≥ ${c.minReps} reps · `:'Ciclo no configurado · '}</strong>${esc(warning)}${c && recommendation.weight!==null?` · Próxima carga sugerida: ${fmt(recommendation.weight)} ${u()}`:''}</div><p class="smallprint" style="margin:12px 2px 0">1RM estimada: <strong data-rm-for="${esc(e.id)}">${liveRm===null?'—':`${fmt(liveRm)} ${u()}`}</strong><span> · calculada por repeticiones, sin ajustar RIR</span></p></div>
     <div class="extras-head"><strong>Series complementarias</strong>${actionButton('add-extra',`${svg('plus')} Agregar`,'ghost',`data-id="${esc(e.id)}"`)}</div><div class="series-row"><small>#</small><small>Peso (${u()})</small><small>Reps</small><small>RIR</small><small></small></div>${e.extras.map((x,j)=>`<div class="series-row"><span class="series-index">${j+1}</span>${['weight','reps','rir'].map(k=>`<input aria-label="${k} serie ${j+1}" type="number" min="0" step="${k==='weight'?'0.25':'1'}" inputmode="decimal" data-eid="${esc(e.id)}" data-part="extras" data-index="${j}" data-key="${k}" placeholder="—" value="${esc(x[k]??'')}">`).join('')}<button class="icon-btn" title="Eliminar serie" aria-label="Eliminar serie complementaria" data-action="remove-extra" data-id="${esc(e.id)}" data-index="${j}">${svg('trash')}</button></div>`).join('')}
     <div class="button-row" style="margin-top:14px">${actionButton('rest-timer',`${svg('clock')} Descanso ${fmt(state.settings.restSeconds/60)} min`,'secondary')}</div></div>`;
 }
@@ -108,7 +109,7 @@ function history() {
   const sessions = [...state.sessions].filter(s=>selectedHistoryDay==='all'||s.dayId===selectedHistoryDay).sort((a,b)=>b.date.localeCompare(a.date));
   return `<div class="stack">${header('Historial','Todas tus sesiones y tu trabajo registrado.')}
     <div class="select-row"><label for="filter-day" class="smallprint">Filtrar por día</label><select id="filter-day" data-filter="history"><option value="all">Todos los días</option>${options(state.days.map(d=>[d.id,d.name]),selectedHistoryDay)}</select></div>
-    ${sessions.length?`<div class="stack">${sessions.map(s=>`<article class="card"><div class="card-title"><div><div class="subheading" style="margin-bottom:5px">${formatDate(s.date)}</div><h3>${esc(day(s.dayId)?.name||'Entrenamiento')}</h3></div><span class="pill">${sessionSets(s)} series</span></div><div class="grid2" style="margin-bottom:14px"><div><div class="section-note">Volumen</div><strong>${fmt(sessionVolume(s))} ${u()}</strong></div><div><div class="section-note">Ejercicios</div><strong>${s.entries.length}</strong></div></div><details><summary style="color:var(--accent);cursor:pointer;font-weight:700;font-size:13px">Ver detalles de la sesión</summary><div style="margin-top:12px">${s.entries.map(e=>`<div class="record"><div><strong>${esc(ex(e.exerciseId)?.name||'Ejercicio')}</strong><small>${e.bilbo?`Bilbo: ${fmt(e.bilbo.weight)} ${u()} × ${e.bilbo.reps} · RIR ${e.bilbo.rir}`:'Sin Bilbo'}${e.extras.length?` · ${e.extras.length} complementarias`:''}</small><small>${e.extras.map(x=>`${fmt(x.weight)}×${x.reps}`).join(' · ')}</small></div></div>`).join('')}${s.notes?`<p class="smallprint">${esc(s.notes)}</p>`:''}</div></details><div class="form-actions">${actionButton('delete-session',`${svg('trash')} Eliminar`,'ghost',`data-id="${esc(s.id)}"`)}</div></article>`).join('')}</div>`:noData('No hay sesiones para mostrar','Cambiá el filtro o registrá tu primer entrenamiento.',actionButton('go-train','Entrenar'))}</div>`;
+    ${sessions.length?`<div class="stack">${sessions.map(s=>`<article class="card"><div class="card-title"><div><div class="subheading" style="margin-bottom:5px">${formatDate(s.date)}</div><h3>${esc(day(s.dayId)?.name||'Entrenamiento')}</h3></div><span class="pill">${sessionSets(s)} series</span></div><div class="grid2" style="margin-bottom:14px"><div><div class="section-note">Volumen</div><strong>${fmt(sessionVolume(s))} ${u()}</strong></div><div><div class="section-note">Ejercicios</div><strong>${s.entries.length}</strong></div></div><details><summary style="color:var(--accent);cursor:pointer;font-weight:700;font-size:13px">Ver detalles de la sesión</summary><div style="margin-top:12px">${s.entries.map(e=>`<div class="record"><div><strong>${esc(ex(e.exerciseId)?.name||'Ejercicio')}</strong><small>${e.bilbo?`Bilbo: ${fmt(e.bilbo.weight)} ${u()} × ${e.bilbo.reps} · RIR ${e.bilbo.rir} · 1RM estimada: ${fmt(estimateBilbo1RM(e.bilbo.weight,e.bilbo.reps))} ${u()}`:'Sin Bilbo'}${e.extras.length?` · ${e.extras.length} complementarias`:''}</small><small>${e.extras.map(x=>`${fmt(x.weight)}×${x.reps}`).join(' · ')}</small></div></div>`).join('')}${s.notes?`<p class="smallprint">${esc(s.notes)}</p>`:''}</div></details><div class="form-actions">${actionButton('delete-session',`${svg('trash')} Eliminar`,'ghost',`data-id="${esc(s.id)}"`)}</div></article>`).join('')}</div>`:noData('No hay sesiones para mostrar','Cambiá el filtro o registrá tu primer entrenamiento.',actionButton('go-train','Entrenar'))}</div>`;
 }
 function lineChart(data) {
   if (data.length < 1) return noData('Aún no hay puntos para graficar','Guardá una serie Bilbo y empezá a seguir tu evolución.');
@@ -118,6 +119,18 @@ function lineChart(data) {
   const y=v=>top+(1-v/(max||1))*(h-top-bottom);
   const line=k=>data.map((d,i)=>`${i?'L':'M'}${x(i).toFixed(2)},${y(d[k]).toFixed(2)}`).join(' ');
   return `<svg class="chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="Curvas de carga y repeticiones por sesión">${[0,1,2,3,4].map(i=>{const py=top+i*(h-top-bottom)/4;return `<line x1="${left}" x2="${w-right}" y1="${py}" y2="${py}" stroke="#354036" stroke-dasharray="4 5"/><text class="chart-label" x="${left-8}" y="${py+4}" text-anchor="end">${fmt(max*(4-i)/4)}</text>`;}).join('')}<path class="chart-line" d="${line('weight')}"/><path class="chart-line chart-secondary" d="${line('reps')}"/>${data.map((d,i)=>`<circle class="chart-dot" cx="${x(i)}" cy="${y(d.weight)}" r="4.7"/><circle class="chart-dot chart-secondary" cx="${x(i)}" cy="${y(d.reps)}" r="4"/><text class="chart-label" x="${x(i)}" y="${h-10}" text-anchor="middle">${esc(d.date.slice(5).replace('-','/'))}</text>`).join('')}</svg><div class="legend"><span><i></i>Carga (${u()})</span><span><i class="orange"></i>Repeticiones</span></div><p class="smallprint" style="margin-top:6px">Ambas series usan la misma escala numérica para visualizar tendencias, no para comparar unidades.</p>`;
+}
+function rmChart(data) {
+  if (!data.length) return noData('Todavía no hay estimaciones', 'Registrá una serie Bilbo válida en este ejercicio.');
+  const w=640,h=228,left=50,right=20,top=24,bottom=40;
+  const values=data.map(d=>d.estimatedRM);
+  const min=Math.floor((Math.min(...values)-Math.max(3,(Math.max(...values)-Math.min(...values))*.15))/5)*5;
+  const max=Math.ceil((Math.max(...values)+Math.max(3,(Math.max(...values)-Math.min(...values))*.15))/5)*5;
+  const lo=Math.max(0,min),span=Math.max(1,max-lo);
+  const x=i=>left+(data.length===1?(w-left-right)/2:i*(w-left-right)/(data.length-1));
+  const y=v=>top+(max-v)/span*(h-top-bottom);
+  const path=data.map((d,i)=>`${i?'L':'M'}${x(i).toFixed(2)},${y(d.estimatedRM).toFixed(2)}`).join(' ');
+  return `<svg class="chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="Evolución de la 1RM estimada en kilogramos">${[0,1,2,3,4].map(i=>{const v=max-i*span/4,py=y(v);return `<line x1="${left}" x2="${w-right}" y1="${py}" y2="${py}" stroke="#354036" stroke-dasharray="4 5"/><text class="chart-label" x="${left-9}" y="${py+4}" text-anchor="end">${fmt(v)}</text>`;}).join('')}<path class="chart-line" d="${path}"/>${data.map((d,i)=>`<circle class="chart-dot" cx="${x(i)}" cy="${y(d.estimatedRM)}" r="5"><title>${esc(d.date)} · ${fmt(d.estimatedRM)} kg · ${fmt(d.weight)} kg × ${d.reps} reps</title></circle>${(i%2===0 || i===data.length-1)?`<text class="chart-label" x="${x(i)}" y="${h-12}" text-anchor="middle">${esc(d.date.slice(5).replace('-','/'))}</text>`:''}`).join('')}</svg>`;
 }
 function barChart(values) {
   const max=Math.max(1,...values.map(x=>x.volume)); const w=620,h=160; const bw=44,gap=(w-36-values.length*bw)/(values.length-1||1);
@@ -130,9 +143,16 @@ function analysis() {
   const bestWeight = sets.length?Math.max(...sets.map(x=>x.weight)):0;
   const bestReps = sets.length?Math.max(...sets.map(x=>x.reps)):0;
   const last = sets.at(-1);
+  const rms = selectedEx ? bilboRmSeries(state.sessions, selectedEx.id) : [];
+  const rmLast = rms.at(-1), rmBest = rms.length ? Math.max(...rms.map(x=>x.estimatedRM)) : null;
+  const rmChange = rmLast && rms.length>1 ? rmLast.estimatedRM-rms[0].estimatedRM : null;
   return `<div class="stack">${header('Tu progreso','Los números detrás de cada entrenamiento.')}
     <div class="grid3"><div class="stat"><div class="mini-icon">${svg('trophy')}</div><div class="stat-value">${fmt(s.volume)}</div><div class="stat-label">Volumen acumulado (${u()})</div></div><div class="stat"><div class="mini-icon">${svg('calendar')}</div><div class="stat-value">${fmt(s.uniqueDays)}</div><div class="stat-label">Días entrenados</div></div><div class="stat"><div class="mini-icon">${svg('target')}</div><div class="stat-value">${fmt(state.cycles.filter(c=>c.status==='finished').length)}</div><div class="stat-label">Ciclos completados</div></div></div>
     <div class="card"><div class="card-title"><h2>Evolución por ejercicio</h2></div><div class="select-row"><label for="chart-ex">Ejercicio</label><select id="chart-ex" data-filter="chart">${options(state.exercises.map(e=>[e.id,e.name]),selectedEx?.id)}</select></div><div style="margin-top:22px">${lineChart(sets.slice(-12))}</div><div class="divider"></div><div class="grid3"><div><div class="section-note">Mayor carga Bilbo</div><h2>${sets.length?`${fmt(bestWeight)} ${u()}`:'—'}</h2></div><div><div class="section-note">Máximas repeticiones</div><h2>${sets.length?fmt(bestReps):'—'}</h2></div><div><div class="section-note">Última serie</div><h2>${last?`${fmt(last.weight)} × ${last.reps}`:'—'}</h2></div></div></div>
+    <div class="card"><div class="card-title"><h2>Evolución de la 1RM estimada</h2><span class="pill muted">Serie Bilbo</span></div>
+    <p class="section-note">Fórmula de las planillas Bilbo: peso × (1 + 0,03 × repeticiones). Una estimación orientativa, no tu 1RM real. El RIR no modifica el cálculo; compará sesiones con técnica y esfuerzo similares.</p>
+    <div style="margin-top:20px">${rmChart(rms.slice(-12))}</div><div class="divider"></div>
+    <div class="grid3"><div><div class="section-note">Última 1RM estimada</div><h2>${rmLast?`${fmt(rmLast.estimatedRM)} ${u()}`:'—'}</h2></div><div><div class="section-note">Mejor 1RM estimada</div><h2>${rmBest===null?'—':`${fmt(rmBest)} ${u()}`}</h2></div><div><div class="section-note">Variación desde el primer registro</div><h2>${rmChange===null?'—':`${rmChange>0?'+':''}${fmt(rmChange)} ${u()}`}</h2></div></div></div>
     <div class="card"><div class="card-title"><h2>Volumen semanal</h2><span class="pill muted">8 semanas</span></div>${barChart(weeklyVolume(state.sessions))}<p class="section-note">Suma de peso × repeticiones de todas las series registradas; no es una estimación de fuerza máxima.</p></div>
     <div class="card"><div class="card-title"><h2>Comparación de ciclos</h2></div>${selectedEx && state.cycles.filter(c=>c.exerciseId===selectedEx.id).length?state.cycles.filter(c=>c.exerciseId===selectedEx.id).map(c=>{const arr=allBilboSets(state.sessions,c.exerciseId,c.id);return `<div class="record"><div><strong>Ciclo ${c.number} · ${c.status==='active'?'Activo':'Finalizado'}</strong><small>${arr.length} sesiones · desde ${formatDate(c.startDate)}</small></div><div class="record-right"><strong>${arr.length?`${fmt(Math.max(...arr.map(s=>s.weight)))} ${u()}`:'—'}</strong><small>Mayor carga registrada</small></div></div>`;}).join(''):noData('Sin ciclos para comparar','Configurá un ciclo en este ejercicio para analizarlo a lo largo del tiempo.')}</div></div>`;
 }
@@ -256,6 +276,10 @@ document.addEventListener('input',event=>{
   const entry=state.draft.entries.find(e=>e.id===el.dataset.eid);if(!entry)return;
   const target=el.dataset.part==='bilbo'?entry.bilbo:entry.extras[+el.dataset.index];if(!target)return;
   target[el.dataset.key]=el.value;persist();
+  if(el.dataset.part==='bilbo' && ['weight','reps'].includes(el.dataset.key)){
+    const node=Array.from(document.querySelectorAll('[data-rm-for]')).find(x=>x.dataset.rmFor===entry.id);
+    if(node){const value=estimateBilbo1RM(entry.bilbo.weight,entry.bilbo.reps);node.textContent=value===null?'—':`${fmt(value)} ${u()}`;}
+  }
 });
 document.addEventListener('change', async event=>{
   const el=event.target;
