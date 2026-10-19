@@ -45,8 +45,8 @@ export function emptyState() {
 export function allBilboSets(sessions, exerciseId, cycleId = null) {
   return sessions.flatMap(s => (s.entries || [])
     .filter(e => e.exerciseId === exerciseId && e.bilbo && (cycleId === null || e.bilbo.cycleId === cycleId))
-    .map(e => ({ ...e.bilbo, date: s.date, sessionId: s.id })))
-    .sort((a, b) => a.date.localeCompare(b.date) || String(a.sessionId).localeCompare(String(b.sessionId)));
+    .map(e => ({ ...e.bilbo, date: s.date, completedAt: s.completedAt ?? s.startedAt ?? `${s.date}T00:00:00`, sessionId: s.id })))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.completedAt.localeCompare(b.completedAt) || String(a.sessionId).localeCompare(String(b.sessionId)));
 }
 export function activeCycle(state, exerciseId) {
   return state.cycles.find(c => c.exerciseId === exerciseId && c.status === 'active') ?? null;

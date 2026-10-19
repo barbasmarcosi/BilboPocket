@@ -14,3 +14,5 @@ test('finalización filtra series incompletas',()=>{const s=withCycle();const d=
 test('la carga total contempla bilbo y complementarias',()=>assert.equal(sessionVolume(done(20)), 1400));
 test('un backup corrupto se rechaza',()=>assert.throws(()=>validateBackup({schemaVersion:1,cycles:[]})));
 test('volumen semanal cero sin registros',()=>assert.equal(weeklyVolume([]).reduce((n,w)=>n+w.volume,0),0));
+
+test('dos sesiones el mismo día se ordenan por finalización real',()=>{const before=done(25),after=done(24);before.id='z';after.id='a';before.completedAt='2026-10-19T13:00:00Z';after.completedAt='2026-10-19T14:00:00Z';after.entries[0].bilbo.weight=52.5;assert.equal(nextPrescription(withCycle().cycles[0],[before,after]).weight,55);});
