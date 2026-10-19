@@ -10,12 +10,13 @@ PWA gratuita, **local-first**, para registrar entrenamientos del Método Bilbo, 
 - Sugerencias **no automáticas**: aumentar carga si hay margen de repeticiones y velocidad adecuada; mantener si RIR bajo o velocidad lenta; revisar fin de ciclo al alcanzar el límite inferior.
 - Borradores recuperables, repetición de ejercicios y estructura previa, temporizador de descansos.
 - Historial, métricas de volumen y análisis de carga/repeticiones por ejercicio y por ciclo.
+- **1RM estimada según el Excel Bilbo** a partir de cada serie (`peso × (1 + 0,03 × repeticiones)`), mostrada en vivo en el entrenamiento, en el historial y en una gráfica por ejercicio, con récord y variación desde el primer registro. La fórmula no incorpora el RIR y no equivale a una 1RM real.
 - Instalable como PWA, disponible sin conexión después de su primera carga.
 - Copias de seguridad JSON exportables e importables, validación básica del archivo, confirmación antes de reemplazar o borrar.
 
 ## Privacidad y límites
 
-**Los datos permanecen exclusivamente en el almacenamiento local del navegador.** No hay cuenta, telemetría ni sincronización. Limpiar datos del navegador o cambiar de dispositivo puede borrar el historial; exportá respaldos JSON periódicamente. Esta versión registra cargas en kilogramos. Las recomendaciones no son una prescripción individual y la app no sustituye el criterio del entrenador. Nunca persigas el fallo o la velocidad a costa de la técnica.
+**Los datos permanecen exclusivamente en el almacenamiento local del navegador.** No hay cuenta, telemetría ni sincronización. Limpiar datos del navegador o cambiar de dispositivo puede borrar el historial; exportá respaldos JSON periódicamente. Esta versión registra cargas en kilogramos. La 1RM estimada es orientativa y pierde precisión con series de muchas repeticiones o realizadas lejos del límite técnico. Las recomendaciones no son una prescripción individual y la app no sustituye el criterio del entrenador. Nunca persigas el fallo o la velocidad a costa de la técnica.
 
 ## Estructura y desarrollo
 
