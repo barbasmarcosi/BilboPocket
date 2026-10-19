@@ -1,0 +1,16 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { emptyState, activeCycle, nextPrescription, workoutForDay, finalizeWorkout, sessionVolume, weeklyVolume, validateBackup, localDate } from '../site/core.js';
+const withCycle = () => { const s=emptyState(); s.cycles.push({id:'c1',exerciseId:'bench',status:'active',startLoad:50,increment:2.5,minReps:15}); return s; };
+const done = (reps, rir=2, speed='explosiva') => ({ id:'s',date:localDate(),dayId:'push',entries:[{exerciseId:'bench',bilbo:{cycleId:'c1',weight:50,reps,rir,speed},extras:[{weight:40,reps:10,rir:2}]}]});
+test('el estado inicial no inventa sesiones',()=>assert.equal(emptyState().sessions.length,0));
+test('inicio del ciclo prescribe carga inicial',()=>assert.equal(nextPrescription(activeCycle(withCycle(),'bench'), []).weight,50));
+test('aumenta únicamente tras serie suficiente y controlada',()=>assert.deepEqual([nextPrescription(withCycle().cycles[0],[done(25)]).status,nextPrescription(withCycle().cycles[0],[done(25)]).weight],['increase',52.5]));
+test('mantiene carga ante fallo o pérdida de velocidad',()=> { assert.equal(nextPrescription(withCycle().cycles[0],[done(25,0)]).status,'hold');assert.equal(nextPrescription(withCycle().cycles[0],[done(25,2,'lenta')]).status,'hold'); });
+test('revisión de ciclo con límite de repeticiones',()=>assert.equal(nextPrescription(withCycle().cycles[0],[done(15)]).status,'review'));
+test('sesiones de otros ciclos no contaminan progresión',()=>{const s=done(25);s.entries[0].bilbo.cycleId='old';assert.equal(nextPrescription(withCycle().cycles[0],[s]).status,'start');});
+test('borrador arrastra estructura del día, pero no repeticiones',()=>{const s=withCycle();s.sessions=[done(30)];const draft=workoutForDay(s,'push');assert.equal(draft.entries[0].bilbo.weight,52.5);assert.equal(draft.entries[0].bilbo.reps,'');});
+test('finalización filtra series incompletas',()=>{const s=withCycle();const d=workoutForDay(s,'push');d.entries[0].bilbo.reps=27;const out=finalizeWorkout(s,d);assert.equal(out.entries.length,1);assert.equal(out.entries[0].bilbo.reps,27);});
+test('la carga total contempla bilbo y complementarias',()=>assert.equal(sessionVolume(done(20)), 1400));
+test('un backup corrupto se rechaza',()=>assert.throws(()=>validateBackup({schemaVersion:1,cycles:[]})));
+test('volumen semanal cero sin registros',()=>assert.equal(weeklyVolume([]).reduce((n,w)=>n+w.volume,0),0));

@@ -1,0 +1,13 @@
+{
+  "name": "bilbopocket",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "PWA local-first para registrar y analizar ciclos del Método Bilbo",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "check": "node --check site/app.js && node --check site/core.js && node --check site/store.js && node --check site/sw.js",
+    "build": "npm run check && npm test"
+  },
+  "engines": { "node": ">=20" }
+}
