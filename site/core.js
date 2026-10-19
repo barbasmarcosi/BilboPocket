@@ -48,6 +48,20 @@ export function allBilboSets(sessions, exerciseId, cycleId = null) {
     .map(e => ({ ...e.bilbo, date: s.date, completedAt: s.completedAt ?? s.startedAt ?? `${s.date}T00:00:00`, sessionId: s.id })))
     .sort((a, b) => a.date.localeCompare(b.date) || a.completedAt.localeCompare(b.completedAt) || String(a.sessionId).localeCompare(String(b.sessionId)));
 }
+// Fórmula utilizada en ejemplos publicados de la planilla Bilbo: carga × (1 + 0,03 × repeticiones).
+// No se ajusta por RIR. Es una estimación orientativa, no una prueba directa del 1RM.
+export function estimateBilbo1RM(weight, reps) {
+  const w = Number(weight), r = Number(reps);
+  if (!Number.isFinite(w) || w <= 0 || !Number.isInteger(r) || r < 1 || r > 500) return null;
+  return roundTo(w * (1 + 0.03 * r));
+}
+export function bilboRmSeries(sessions, exerciseId, cycleId = null) {
+  return allBilboSets(sessions, exerciseId, cycleId).flatMap(set => {
+    const estimatedRM = estimateBilbo1RM(set.weight, set.reps);
+    return estimatedRM === null ? [] : [{ ...set, estimatedRM }];
+  });
+}
+
 export function activeCycle(state, exerciseId) {
   return state.cycles.find(c => c.exerciseId === exerciseId && c.status === 'active') ?? null;
 }
