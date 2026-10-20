@@ -167,7 +167,7 @@ function settings() {
     <div class="card"><div class="card-title"><h2>Catálogo de ejercicios</h2>${actionButton('new-exercise',`${svg('plus')} Agregar`,'secondary')}</div>${state.exercises.map(e=>`<div class="list-row"><div><strong>${esc(e.name)}</strong><small>${esc(e.category)} · incremento sugerido ${fmt(e.increment)} ${u()}</small></div>${actionButton('edit-exercise','Editar','ghost',`data-id="${esc(e.id)}"`)}</div>`).join('')}</div>
     <div class="card"><div class="card-title"><h2>Importar Excel Bilbo</h2><span class="pill muted">XLSX · XLSM · CSV</span></div>
       <p class="smallprint">Traé tu historial desde el Excel de progresión Bilbo o una tabla con columnas Peso y Repeticiones. Reconocemos ciclos y fechas, descartamos pesos planificados sin repeticiones y evitamos duplicar importaciones. Todo se procesa en tu dispositivo.</p>
-      <div class="button-row excel-upload-row" style="margin-top:16px"><label class="btn secondary" for="excel-upload">${svg('upload')} Seleccionar Excel</label><input id="excel-upload" type="file" accept=".xlsx,.xlsm,.csv,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" class="visually-hidden-file" aria-label="Seleccionar planilla de Bilbo"></div>
+      <div class="button-row" style="margin-top:16px"><div class="excel-file-trigger"><span class="btn secondary" aria-hidden="true">${svg('upload')} Seleccionar Excel</span><input id="excel-upload" type="file" accept=".xlsx,.xlsm,.csv,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" aria-label="Seleccionar planilla de Bilbo"></div></div>
       <p class="smallprint" style="margin-top:12px">Se muestra una vista previa antes de guardar. Los registros sin fecha requieren que elijas una fecha o se omiten. Se importan las series Bilbo; los cálculos y gráficos se generan nuevamente.</p>
     </div>
     <div class="card"><div class="card-title"><h2>Respaldo y privacidad</h2><span class="pill">Local-first</span></div><p class="smallprint">Tus registros se guardan en el navegador de este dispositivo. Borrar datos del navegador, cambiar de celular o usar modo privado puede eliminarlos. Exportá copias regularmente: no hay sincronización entre dispositivos.</p><div class="button-row" style="margin-top:18px">${actionButton('backup',`${svg('download')} Exportar respaldo`)}<label class="btn secondary" for="backup-file">${svg('upload')} Importar respaldo</label><input type="file" id="backup-file" accept="application/json,.json" style="position:absolute;width:1px;height:1px;opacity:0"></div><div class="divider"></div>${actionButton('wipe','Borrar todos los datos','danger')}</div>
@@ -298,8 +298,10 @@ function handleForm(form) {
   if(form.dataset.form==='wipe'){
     if(String(f.get('verify')||'').trim().toUpperCase()!=='BORRAR'){
       const input=form.querySelector('[name="verify"]');
-      if(input)input.setCustomValidity('Escribí BORRAR para confirmar.');
-      input?.reportValidity();return;
+      let notice=form.querySelector('[data-wipe-error]');
+      if(!notice){notice=document.createElement('p');notice.dataset.wipeError='';notice.setAttribute('role','alert');notice.className='smallprint';notice.style.color='#ffb7a2';input?.after(notice);}
+      notice.textContent='Escribí BORRAR para confirmar el borrado.';
+      input?.focus();return;
     }
     if(!clearState()){toast('No se pudo borrar el almacenamiento. No se modificaron los datos.');return;}
     state=emptyState();excelPreview=null;pendingExcelImport=null;selectedDay=state.days[0]?.id;selectedChart=state.exercises[0]?.id;
