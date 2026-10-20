@@ -97,3 +97,14 @@ test('nunca reemplaza ni modifica los datos anteriores',()=>{
 test('no permite escanear planillas sin repeticiones realizadas',()=>{
   assert.throws(()=>scanBilboWorkbook({sheets:[sheet('v15',[['Peso','Repeticiones'],[50,0],[52.5,'']])]}),/No encontré/);
 });
+
+test('una misma hoja puede contener varios ejercicios correctamente',()=>{
+  const scan=scanBilboWorkbook({sheets:[sheet('Gym',[
+    ['Fecha','Ejercicio','Peso','Reps','RIR'],
+    ['19/10/2026','Press de banca',50,23,2],
+    ['19/10/2026','Remo con barra',70,12,2],
+  ])]});
+  const result=planBilboImport(emptyState(),scan,{fingerprint:'multisheet',mappings:{0:'bench'}});
+  assert.equal(result.added,2);
+  assert.deepEqual(result.state.sessions.map(x=>x.entries[0].exerciseId),['bench','row']);
+});
