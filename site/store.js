@@ -8,6 +8,15 @@ export function saveState(state) {
   try { localStorage.setItem(KEY, JSON.stringify(state)); return true; }
   catch(e) { console.error('Error guardando:', e); return false; }
 }
+export function clearState() {
+  try {
+    localStorage.removeItem(KEY);
+    return localStorage.getItem(KEY) === null;
+  } catch (error) {
+    console.error('No se pudieron eliminar los datos locales:', error);
+    return false;
+  }
+}
 export function exportState(state) {
   return JSON.stringify({ ...state, exportedAt: new Date().toISOString() }, null, 2);
 }
