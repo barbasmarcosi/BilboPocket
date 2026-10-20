@@ -17,10 +17,10 @@ test('Ajustes: confirmar BORRAR and importar CSV respond to real delegated actio
   };
   globalThis.document=documentMock;
   globalThis.window={addEventListener(type,fn){winEvents.set(type,fn);}};
-  globalThis.navigator={onLine:true};
+  Object.defineProperty(globalThis,'navigator',{configurable:true,value:{onLine:true}});
   globalThis.location={hash:'#ajustes'};
   globalThis.scrollTo=()=>{};
-  globalThis.crypto=webcrypto;
+  Object.defineProperty(globalThis,'crypto',{configurable:true,value:webcrypto});
   globalThis.localStorage={
     getItem(key){return storage.get(key)??null;},
     setItem(key,value){storage.set(key,String(value));},
