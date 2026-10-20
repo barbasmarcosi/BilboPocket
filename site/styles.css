@@ -17,3 +17,9 @@
 .visually-hidden-file{position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;opacity:0!important;clip-path:inset(50%)!important;white-space:nowrap!important}
 .excel-upload-row label.btn{cursor:pointer}
 .excel-upload-row label.btn:focus-within,.excel-upload-row label.btn:active{outline:2px solid var(--accent);outline-offset:3px}
+
+/* The native file input covers the trigger: iOS Safari must receive a real user tap. */
+.excel-file-trigger{position:relative;display:inline-flex;max-width:100%;border-radius:12px;overflow:hidden}
+.excel-file-trigger .btn{pointer-events:none}
+.excel-file-trigger input[type=file]{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;margin:0!important;padding:0!important;opacity:0!important;cursor:pointer!important;font-size:50px!important}
+.excel-file-trigger:focus-within{outline:2px solid var(--accent);outline-offset:3px}
