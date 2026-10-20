@@ -153,7 +153,9 @@ export function planBilboImport(state,scan,options) {
     const cycleId=cycleMap.get(`${item.sheetIndex}|${item.exerciseId}|${item.cycleNumber}`);
     const firstDay=copy.days.find(d=>d.exerciseIds.includes(item.exerciseId))||copy.days[0];
     if(!firstDay)throw new Error('Necesitás al menos un día de entrenamiento.');
-    const recordedAt=`${item.date}T12:00:00.000Z`;
+    // The source table has an ordering but may not include actual clock times.
+    // Use deterministic seconds to preserve row order; these are display-order markers.
+    const recordedAt=new Date(Date.parse(`${item.date}T12:00:00.000Z`)+index*1000).toISOString();
     copy.sessions.push({
       id:uid(),dayId:firstDay.id,date:item.date,startedAt:recordedAt,completedAt:recordedAt,
       imported:true,importSource:{key:item.key,sheet:item.sheet,row:item.row},
