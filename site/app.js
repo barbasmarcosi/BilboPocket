@@ -1,5 +1,5 @@
 import { uid, localDate, number, fmt, escapeHTML as esc, formatDate, emptyState, activeCycle, nextPrescription, workoutForDay, finalizeWorkout, stats, sessionVolume, sessionSets, allBilboSets, bilboRmSeries, estimateBilbo1RM, weeklyVolume, validateBackup, starterExercises } from './core.js';
-import { loadState, saveState, exportState } from './store.js';
+import { loadState, saveState, exportState, clearState } from './store.js';
 import { readExcelWorkbook } from './excel-reader.js';
 import { scanBilboWorkbook, matchingExercise, planBilboImport } from './excel-import.js';
 
@@ -11,6 +11,7 @@ let selectedHistoryDay = 'all';
 let restUntil = null;
 let deferredInstall = null;
 let excelPreview = null;
+let pendingExcelImport = null;
 const root = document.getElementById('app');
 const modalRoot = document.getElementById('modal-root');
 const toastNode = document.getElementById('toast');
@@ -166,8 +167,7 @@ function settings() {
     <div class="card"><div class="card-title"><h2>Catálogo de ejercicios</h2>${actionButton('new-exercise',`${svg('plus')} Agregar`,'secondary')}</div>${state.exercises.map(e=>`<div class="list-row"><div><strong>${esc(e.name)}</strong><small>${esc(e.category)} · incremento sugerido ${fmt(e.increment)} ${u()}</small></div>${actionButton('edit-exercise','Editar','ghost',`data-id="${esc(e.id)}"`)}</div>`).join('')}</div>
     <div class="card"><div class="card-title"><h2>Importar Excel Bilbo</h2><span class="pill muted">XLSX · XLSM · CSV</span></div>
       <p class="smallprint">Traé tu historial desde el Excel de progresión Bilbo o una tabla con columnas Peso y Repeticiones. Reconocemos ciclos y fechas, descartamos pesos planificados sin repeticiones y evitamos duplicar importaciones. Todo se procesa en tu dispositivo.</p>
-      <div class="button-row" style="margin-top:16px">${actionButton('pick-excel',`${svg('upload')} Seleccionar Excel`,'secondary')}</div>
-      <input id="excel-upload" type="file" accept=".xlsx,.xlsm,.csv,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" class="hidden" aria-label="Seleccionar planilla de Bilbo">
+      <div class="button-row excel-upload-row" style="margin-top:16px"><label class="btn secondary" for="excel-upload">${svg('upload')} Seleccionar Excel</label><input id="excel-upload" type="file" accept=".xlsx,.xlsm,.csv,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" class="visually-hidden-file" aria-label="Seleccionar planilla de Bilbo"></div>
       <p class="smallprint" style="margin-top:12px">Se muestra una vista previa antes de guardar. Los registros sin fecha requieren que elijas una fecha o se omiten. Se importan las series Bilbo; los cálculos y gráficos se generan nuevamente.</p>
     </div>
     <div class="card"><div class="card-title"><h2>Respaldo y privacidad</h2><span class="pill">Local-first</span></div><p class="smallprint">Tus registros se guardan en el navegador de este dispositivo. Borrar datos del navegador, cambiar de celular o usar modo privado puede eliminarlos. Exportá copias regularmente: no hay sincronización entre dispositivos.</p><div class="button-row" style="margin-top:18px">${actionButton('backup',`${svg('download')} Exportar respaldo`)}<label class="btn secondary" for="backup-file">${svg('upload')} Importar respaldo</label><input type="file" id="backup-file" accept="application/json,.json" style="position:absolute;width:1px;height:1px;opacity:0"></div><div class="divider"></div>${actionButton('wipe','Borrar todos los datos','danger')}</div>
@@ -178,7 +178,7 @@ function guide() {
   return `<div class="stack">${header('Guía BilboPocket','Entendé cómo usamos los datos de tu entrenamiento.',actionButton('go-train','Entrenar'))}<div class="card"><div class="card-title"><h2>Una progresión consciente</h2></div>${guideItems.map((x,i)=>`<div class="guide-step"><div class="guide-index">${i+1}</div><div><strong>${x[0]}</strong><p>${x[1]}</p></div></div>`).join('')}<div class="hint-box warning">Esto es una herramienta de seguimiento, no un programa médico ni una prescripción individual. Pará ante dolor o signos de lesión y adaptá el entrenamiento a tu situación.</div></div><p class="smallprint">Esta aplicación es independiente y no está afiliada a Bilbo Team ni a Jesús Varela. Para profundizar, consultá <a class="subtle-link" href="https://bilboteam.com/" target="_blank" rel="noopener noreferrer">las explicaciones oficiales</a>.</p></div>`;
 }
 function showModal(title, body) {
-  modalRoot.innerHTML=`<div class="modal-backdrop" data-action="close-modal"><div class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}" onclick="event.stopPropagation()"><div class="card-title"><h2>${esc(title)}</h2><button class="modal-close" data-action="close-modal" aria-label="Cerrar">×</button></div>${body}</div></div>`;
+  modalRoot.innerHTML=`<div class="modal-backdrop"><div class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="card-title"><h2>${esc(title)}</h2><button class="modal-close" data-action="close-modal" aria-label="Cerrar">×</button></div>${body}</div></div>`;
   modalRoot.querySelector('input,select,button')?.focus();
 }
 async function loadExcelPreview(file) {
@@ -194,7 +194,8 @@ async function loadExcelPreview(file) {
     excelPreview={filename:file.name,scan,fingerprint};
     showExcelPreview();
   } catch(error) {
-    hideModal();toast(error?.message||'No se pudo interpretar la planilla.');
+    excelPreview=null;
+    showModal('No se pudo leer el Excel', `<div class="hint-box warning" role="alert">${esc(error?.message||'No se pudo interpretar la planilla.')}</div><p class="smallprint" style="margin-top:12px">Probá guardando el archivo como .xlsx o .csv desde Excel. Tus registros existentes no se modificaron.</p><div class="form-actions"><button type="button" class="btn" data-action="close-modal">Entendido</button></div>`);
   }
 }
 function showExcelPreview(){
@@ -247,7 +248,6 @@ function makeExtra() {return {weight:'',reps:'',rir:2};}
 function handleAction(button) {
   const act=button.dataset.action,id=button.dataset.id;
   if (act==='close-modal'){hideModal();return;}
-  if (act==='pick-excel'){document.getElementById('excel-upload')?.click();return;}
   if (act==='go-train') return setPage('entrenar');
   if (act==='go-cycles') return setPage('ciclos');
   if (act==='go-history') return setPage('historial');
@@ -275,11 +275,37 @@ function handleAction(button) {
   if (act==='rest-timer'){restUntil=Date.now()+state.settings.restSeconds*1000;updateTimer();return;}
   if (act==='stop-timer'){restUntil=null;updateTimer();return;}
   if (act==='backup'){const blob=new Blob([exportState(state)],{type:'application/json'});const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download=`bilbopocket-respaldo-${localDate()}.json`;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);toast('Respaldo descargado');return;}
-  if (act==='wipe'){if(confirmAction('Vas a borrar todo el historial, ciclos y ajustes de este dispositivo. ¿Continuar?') && confirmAction('Última confirmación: ¿borrar todos los datos?')){state=emptyState();selectedDay=state.days[0]?.id;persist();toast('Datos restablecidos');setPage('inicio');}return;}
+  if (act==='wipe') {
+    showModal('Borrar todos los datos',`<div class="hint-box warning"><strong>Esta acción es irreversible.</strong><p style="margin-top:8px">Eliminarás las sesiones, ciclos, días personalizados y ajustes guardados en este dispositivo. No afecta a otros dispositivos.</p></div>
+      <form data-form="wipe" style="margin-top:18px">
+        <div class="field"><label for="wipe-verify">Escribí BORRAR para confirmar</label><input id="wipe-verify" name="verify" placeholder="BORRAR" autocomplete="off" autocapitalize="characters" spellcheck="false" required></div>
+        <div class="form-actions"><button type="button" class="btn secondary" data-action="close-modal">Cancelar</button><button type="submit" class="btn danger">Borrar definitivamente</button></div>
+      </form>`);
+    return;
+  }
+  if (act==='commit-excel-import') {
+    if(!pendingExcelImport){toast('Volvé a seleccionar el archivo para importar.');return;}
+    const {result}=pendingExcelImport;
+    if(!saveState(result.state)){toast('No se pudo guardar. Tus datos siguen intactos.');return;}
+    state=result.state;pendingExcelImport=null;excelPreview=null;
+    hideModal();setPage('historial');toast(`Se importaron ${result.added} series correctamente`);
+    return;
+  }
   if (act==='install'){if(deferredInstall){deferredInstall.prompt();deferredInstall.userChoice.then(()=>{deferredInstall=null;});}else{toast('En iOS: Compartir → Añadir a pantalla de inicio. En Android: menú → Instalar.');}return;}
 }
 function handleForm(form) {
   const f=new FormData(form);const id=form.dataset.id;
+  if(form.dataset.form==='wipe'){
+    if(String(f.get('verify')||'').trim().toUpperCase()!=='BORRAR'){
+      const input=form.querySelector('[name="verify"]');
+      if(input)input.setCustomValidity('Escribí BORRAR para confirmar.');
+      input?.reportValidity();return;
+    }
+    if(!clearState()){toast('No se pudo borrar el almacenamiento. No se modificaron los datos.');return;}
+    state=emptyState();excelPreview=null;pendingExcelImport=null;selectedDay=state.days[0]?.id;selectedChart=state.exercises[0]?.id;
+    hideModal();setPage('inicio');toast('Datos del dispositivo eliminados.');
+    return;
+  }
   if(form.dataset.form==='excel-import'){
     if(!excelPreview){toast('Volvé a seleccionar el Excel.');return;}
     try {
@@ -289,12 +315,15 @@ function handleForm(form) {
         mappings,fingerprint:excelPreview.fingerprint,
         undatedDate:f.has('useDate')?String(f.get('referenceDate')||''):null
       });
-      if(!result.added){toast('No hay series nuevas: todas están duplicadas o no tienen fecha.');return;}
-      const message=`Se incorporarán ${result.added} series y ${result.newCycles} ciclos históricos. ${result.duplicates} duplicados omitidos; ${result.missingDate} sin fecha omitidos. No se sobrescribirán tus datos. ¿Confirmar?`;
-      if(!confirmAction(message))return;
-      if(!saveState(result.state))throw new Error('No se pudo guardar la importación. No se modificó el historial.');
-      state=result.state;excelPreview=null;hideModal();toast(`Se importaron ${result.added} series correctamente`);setPage('historial');
-    }catch(error){toast(error.message||'Error al guardar el Excel.');}
+      if(!result.added){
+        showModal('No hay series nuevas',`<p>No se encontraron series nuevas para importar.</p><p class="section-note" style="margin-top:10px">Duplicadas: ${result.duplicates} · Sin fecha: ${result.missingDate} · Ejercicios sin asignar: ${result.invalidMapping}.</p><div class="form-actions"><button class="btn" data-action="close-modal" type="button">Entendido</button></div>`);return;
+      }
+      pendingExcelImport={result};
+      showModal('Confirmar importación',`<p>Se agregarán <strong>${result.added} series</strong> y <strong>${result.newCycles} ciclos históricos</strong> al dispositivo.</p>
+        <p class="section-note" style="margin-top:14px">${result.duplicates} duplicadas · ${result.missingDate} sin fecha · ${result.invalidMapping} sin ejercicio fueron omitidas.</p>
+        <div class="hint-box" style="margin-top:14px">No se eliminará ni sobrescribirá tu historial anterior. Los ciclos nuevos se archivarán como históricos.</div>
+        <div class="form-actions"><button class="btn secondary" data-action="close-modal" type="button">Cancelar</button><button class="btn" data-action="commit-excel-import" type="button">Confirmar e importar</button></div>`);
+    }catch(error){showModal('No se pudo preparar la importación',`<div class="hint-box warning" role="alert">${esc(error.message||'Error al importar el Excel.')}</div><div class="form-actions"><button type="button" class="btn" data-action="close-modal">Entendido</button></div>`);}
     return;
   }
   if(form.dataset.form==='preferences') {
@@ -330,7 +359,12 @@ function handleForm(form) {
   }
 }
 
-document.addEventListener('click',event=>{const button=event.target.closest('[data-action]');if(button){event.preventDefault();handleAction(button);}});
+document.addEventListener('click',event=>{
+  // Backdrop clicks close a dialog; inner controls still reach delegated actions.
+  if(event.target===modalRoot.querySelector('.modal-backdrop')){hideModal();return;}
+  const button=event.target.closest?.('[data-action]');
+  if(button){event.preventDefault();handleAction(button);}
+});
 document.addEventListener('submit',event=>{const form=event.target.closest('[data-form]');if(form){event.preventDefault();handleForm(form);}});
 document.addEventListener('input',event=>{
   const el=event.target;
