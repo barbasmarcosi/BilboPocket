@@ -20,6 +20,8 @@ test('Ajustes: confirmar BORRAR and importar CSV respond to real delegated actio
   Object.defineProperty(globalThis,'navigator',{configurable:true,value:{onLine:true}});
   globalThis.location={hash:'#ajustes'};
   globalThis.scrollTo=()=>{};
+  // The app's rest-timer interval is a browser concern; don't leave a live Node timer.
+  globalThis.setInterval=()=>0;
   Object.defineProperty(globalThis,'crypto',{configurable:true,value:webcrypto});
   globalThis.localStorage={
     getItem(key){return storage.get(key)??null;},
