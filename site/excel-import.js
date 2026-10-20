@@ -116,7 +116,9 @@ export function planBilboImport(state,scan,options) {
   const byGroup=new Map();
   const accepted=[];let duplicates=0,missingDate=0,invalidMapping=0;
   for(const item of scan.entries){
-    const exerciseId=mappings[item.sheetIndex];
+    // In a generic sheet, a populated exercise column takes precedence over the sheet mapping.
+    // Unknown exercise labels fall back to the explicit user-selected sheet mapping.
+    const exerciseId=(item.exerciseName?matchingExercise(item.exerciseName,copy.exercises):null)||mappings[item.sheetIndex];
     if(!copy.exercises.some(x=>x.id===exerciseId)){invalidMapping++;continue;}
     const date=item.date||assign;
     if(!date){missingDate++;continue;}
