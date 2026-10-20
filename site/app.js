@@ -1,5 +1,7 @@
 import { uid, localDate, number, fmt, escapeHTML as esc, formatDate, emptyState, activeCycle, nextPrescription, workoutForDay, finalizeWorkout, stats, sessionVolume, sessionSets, allBilboSets, bilboRmSeries, estimateBilbo1RM, weeklyVolume, validateBackup, starterExercises } from './core.js';
 import { loadState, saveState, exportState } from './store.js';
+import { readExcelWorkbook } from './excel-reader.js';
+import { scanBilboWorkbook, matchingExercise, planBilboImport } from './excel-import.js';
 
 let state = loadState();
 let page = location.hash.replace('#','') || 'inicio';
@@ -8,6 +10,7 @@ let selectedChart = state.exercises[0]?.id;
 let selectedHistoryDay = 'all';
 let restUntil = null;
 let deferredInstall = null;
+let excelPreview = null;
 const root = document.getElementById('app');
 const modalRoot = document.getElementById('modal-root');
 const toastNode = document.getElementById('toast');
@@ -109,7 +112,7 @@ function history() {
   const sessions = [...state.sessions].filter(s=>selectedHistoryDay==='all'||s.dayId===selectedHistoryDay).sort((a,b)=>b.date.localeCompare(a.date));
   return `<div class="stack">${header('Historial','Todas tus sesiones y tu trabajo registrado.')}
     <div class="select-row"><label for="filter-day" class="smallprint">Filtrar por día</label><select id="filter-day" data-filter="history"><option value="all">Todos los días</option>${options(state.days.map(d=>[d.id,d.name]),selectedHistoryDay)}</select></div>
-    ${sessions.length?`<div class="stack">${sessions.map(s=>`<article class="card"><div class="card-title"><div><div class="subheading" style="margin-bottom:5px">${formatDate(s.date)}</div><h3>${esc(day(s.dayId)?.name||'Entrenamiento')}</h3></div><span class="pill">${sessionSets(s)} series</span></div><div class="grid2" style="margin-bottom:14px"><div><div class="section-note">Volumen</div><strong>${fmt(sessionVolume(s))} ${u()}</strong></div><div><div class="section-note">Ejercicios</div><strong>${s.entries.length}</strong></div></div><details><summary style="color:var(--accent);cursor:pointer;font-weight:700;font-size:13px">Ver detalles de la sesión</summary><div style="margin-top:12px">${s.entries.map(e=>`<div class="record"><div><strong>${esc(ex(e.exerciseId)?.name||'Ejercicio')}</strong><small>${e.bilbo?`Bilbo: ${fmt(e.bilbo.weight)} ${u()} × ${e.bilbo.reps} · RIR ${e.bilbo.rir} · 1RM estimada: ${fmt(estimateBilbo1RM(e.bilbo.weight,e.bilbo.reps))} ${u()}`:'Sin Bilbo'}${e.extras.length?` · ${e.extras.length} complementarias`:''}</small><small>${e.extras.map(x=>`${fmt(x.weight)}×${x.reps}`).join(' · ')}</small></div></div>`).join('')}${s.notes?`<p class="smallprint">${esc(s.notes)}</p>`:''}</div></details><div class="form-actions">${actionButton('delete-session',`${svg('trash')} Eliminar`,'ghost',`data-id="${esc(s.id)}"`)}</div></article>`).join('')}</div>`:noData('No hay sesiones para mostrar','Cambiá el filtro o registrá tu primer entrenamiento.',actionButton('go-train','Entrenar'))}</div>`;
+    ${sessions.length?`<div class="stack">${sessions.map(s=>`<article class="card"><div class="card-title"><div><div class="subheading" style="margin-bottom:5px">${formatDate(s.date)}</div><h3>${esc(day(s.dayId)?.name||'Entrenamiento')}</h3></div><span class="pill">${sessionSets(s)} series</span></div><div class="grid2" style="margin-bottom:14px"><div><div class="section-note">Volumen</div><strong>${fmt(sessionVolume(s))} ${u()}</strong></div><div><div class="section-note">Ejercicios</div><strong>${s.entries.length}</strong></div></div><details><summary style="color:var(--accent);cursor:pointer;font-weight:700;font-size:13px">Ver detalles de la sesión</summary><div style="margin-top:12px">${s.entries.map(e=>`<div class="record"><div><strong>${esc(ex(e.exerciseId)?.name||'Ejercicio')}</strong><small>${e.bilbo?`Bilbo: ${fmt(e.bilbo.weight)} ${u()} × ${e.bilbo.reps} · RIR ${e.bilbo.rir==null?'—':e.bilbo.rir} · 1RM estimada: ${fmt(estimateBilbo1RM(e.bilbo.weight,e.bilbo.reps))} ${u()}`:'Sin Bilbo'}${e.extras.length?` · ${e.extras.length} complementarias`:''}</small><small>${e.extras.map(x=>`${fmt(x.weight)}×${x.reps}`).join(' · ')}</small></div></div>`).join('')}${s.notes?`<p class="smallprint">${esc(s.notes)}</p>`:''}</div></details><div class="form-actions">${actionButton('delete-session',`${svg('trash')} Eliminar`,'ghost',`data-id="${esc(s.id)}"`)}</div></article>`).join('')}</div>`:noData('No hay sesiones para mostrar','Cambiá el filtro o registrá tu primer entrenamiento.',actionButton('go-train','Entrenar'))}</div>`;
 }
 function lineChart(data) {
   if (data.length < 1) return noData('Aún no hay puntos para graficar','Guardá una serie Bilbo y empezá a seguir tu evolución.');
@@ -161,6 +164,12 @@ function settings() {
     <div class="card"><div class="card-title"><h2>Preferencias</h2></div><form data-form="preferences"><div class="form-grid"><div class="field"><label for="userName">Tu nombre (opcional)</label><input id="userName" name="userName" maxlength="40" placeholder="Cómo querés que te llamemos" value="${esc(state.settings.userName||'')}"></div><div class="field"><label for="restSeconds">Descanso (segundos)</label><input id="restSeconds" name="restSeconds" type="number" min="30" max="1200" step="15" value="${state.settings.restSeconds}"></div></div><div class="form-actions"><button class="btn" type="submit">Guardar preferencias</button></div></form><p class="smallprint">Las cargas se muestran en kg. Para evitar conversiones accidentales de datos históricos, esta versión usa una única unidad.</p></div>
     <div class="card"><div class="card-title"><h2>Días de entrenamiento</h2>${actionButton('new-day',`${svg('plus')} Nuevo día`,'secondary')}</div>${state.days.map(d=>`<div class="list-row"><div><strong>${esc(d.emoji||'↗')} ${esc(d.name)}</strong><small>${d.exerciseIds.map(id=>ex(id)?.name).filter(Boolean).join(' · ')||'Sin ejercicios'}</small></div><div class="list-row-actions">${actionButton('edit-day','Editar','ghost',`data-id="${esc(d.id)}"`)}</div></div>`).join('')}</div>
     <div class="card"><div class="card-title"><h2>Catálogo de ejercicios</h2>${actionButton('new-exercise',`${svg('plus')} Agregar`,'secondary')}</div>${state.exercises.map(e=>`<div class="list-row"><div><strong>${esc(e.name)}</strong><small>${esc(e.category)} · incremento sugerido ${fmt(e.increment)} ${u()}</small></div>${actionButton('edit-exercise','Editar','ghost',`data-id="${esc(e.id)}"`)}</div>`).join('')}</div>
+    <div class="card"><div class="card-title"><h2>Importar Excel Bilbo</h2><span class="pill muted">XLSX · XLSM · CSV</span></div>
+      <p class="smallprint">Traé tu historial desde el Excel de progresión Bilbo o una tabla con columnas Peso y Repeticiones. Reconocemos ciclos y fechas, descartamos pesos planificados sin repeticiones y evitamos duplicar importaciones. Todo se procesa en tu dispositivo.</p>
+      <div class="button-row" style="margin-top:16px">${actionButton('pick-excel',`${svg('upload')} Seleccionar Excel`,'secondary')}</div>
+      <input id="excel-upload" type="file" accept=".xlsx,.xlsm,.csv,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" class="hidden" aria-label="Seleccionar planilla de Bilbo">
+      <p class="smallprint" style="margin-top:12px">Se muestra una vista previa antes de guardar. Los registros sin fecha requieren que elijas una fecha o se omiten. Se importan las series Bilbo; los cálculos y gráficos se generan nuevamente.</p>
+    </div>
     <div class="card"><div class="card-title"><h2>Respaldo y privacidad</h2><span class="pill">Local-first</span></div><p class="smallprint">Tus registros se guardan en el navegador de este dispositivo. Borrar datos del navegador, cambiar de celular o usar modo privado puede eliminarlos. Exportá copias regularmente: no hay sincronización entre dispositivos.</p><div class="button-row" style="margin-top:18px">${actionButton('backup',`${svg('download')} Exportar respaldo`)}<label class="btn secondary" for="backup-file">${svg('upload')} Importar respaldo</label><input type="file" id="backup-file" accept="application/json,.json" style="position:absolute;width:1px;height:1px;opacity:0"></div><div class="divider"></div>${actionButton('wipe','Borrar todos los datos','danger')}</div>
     <div class="card"><div class="card-title"><h2>Instalar y usar sin conexión</h2></div><p class="smallprint">Una vez abierta online, la PWA guarda sus recursos para funcionar sin conexión. En iPhone: Compartir → Añadir a pantalla de inicio. En Android, usá «Instalar aplicación» desde el navegador.</p><div class="button-row" style="margin-top:16px">${actionButton('install','Instalar aplicación','secondary')}${actionButton('go-guide','Leer guía del método','ghost')}</div></div></div>`;
 }
@@ -171,6 +180,43 @@ function guide() {
 function showModal(title, body) {
   modalRoot.innerHTML=`<div class="modal-backdrop" data-action="close-modal"><div class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}" onclick="event.stopPropagation()"><div class="card-title"><h2>${esc(title)}</h2><button class="modal-close" data-action="close-modal" aria-label="Cerrar">×</button></div>${body}</div></div>`;
   modalRoot.querySelector('input,select,button')?.focus();
+}
+async function loadExcelPreview(file) {
+  if(!file)return;
+  showModal('Analizando Excel', '<p class="section-note" role="status">Leyendo hojas, ciclos y series registradas…</p>');
+  try {
+    const workbook=await readExcelWorkbook(file);
+    const scan=scanBilboWorkbook(workbook);
+    if(!crypto?.subtle) throw new Error('La importación necesita una conexión segura (HTTPS).');
+    const data=await file.arrayBuffer();
+    const hash=await crypto.subtle.digest('SHA-256',data);
+    const fingerprint=Array.from(new Uint8Array(hash)).map(x=>x.toString(16).padStart(2,'0')).join('');
+    excelPreview={filename:file.name,scan,fingerprint};
+    showExcelPreview();
+  } catch(error) {
+    hideModal();toast(error?.message||'No se pudo interpretar la planilla.');
+  }
+}
+function showExcelPreview(){
+  if(!excelPreview)return;
+  const {scan,filename}=excelPreview;
+  const rows=scan.entries.slice(0,12).map(r=>`<tr><td>${esc(r.sheet)} · ${r.row}</td><td>${r.date?formatDate(r.date):'Sin fecha'}</td><td>${fmt(r.weight)} kg</td><td>${r.reps}</td><td>${r.cycleNumber}</td></tr>`).join('');
+  const mappings=scan.sheets.filter(x=>x.count>0).map(info=>{
+    const proposed=matchingExercise(info.hint,state.exercises)||state.exercises[0]?.id;
+    return `<div class="field" style="margin-top:12px"><label for="sheet-map-${info.index}">${esc(info.name)} · ${info.count} series reconocidas</label><select id="sheet-map-${info.index}" name="sheet-map-${info.index}" required>${options(state.exercises.map(x=>[x.id,x.name]),proposed)}</select></div>`;
+  }).join('');
+  showModal('Importar historial de Excel',`<form data-form="excel-import">
+    <p class="section-note"><strong>${esc(filename)}</strong></p>
+    <div class="grid3" style="margin:14px 0"><div><div class="section-note">Series detectadas</div><h2>${scan.entries.length}</h2></div><div><div class="section-note">Sin fecha</div><h2>${scan.missingDates}</h2></div><div><div class="section-note">Filas planificadas omitidas</div><h2>${scan.planned}</h2></div></div>
+    <div class="divider"></div><div class="subheading">Ejercicio de cada hoja</div>${mappings}
+    ${scan.missingDates?`<div class="hint-box warning" style="margin-top:16px"><strong>Fechas ausentes:</strong> ${scan.missingDates} serie(s) no tienen fecha interpretable. Por defecto no se importan para no inventar fechas.</div>
+      <label class="check-row" style="margin-top:10px"><input type="checkbox" name="useDate" value="1"><span>Importar también las series sin fecha asignándoles esta fecha:</span></label>
+      <div class="field" style="margin-top:10px"><label for="referenceDate">Fecha para registros sin fecha</label><input id="referenceDate" name="referenceDate" type="date" value="${localDate()}"></div>`:''}
+    <div class="divider"></div><div class="subheading">Vista previa (primeras 12 series)</div>
+    <div style="overflow-x:auto"><table class="excel-preview-table"><thead><tr><th>Hoja/fila</th><th>Fecha</th><th>Peso</th><th>Reps</th><th>Ciclo</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="smallprint" style="margin-top:10px">Los ciclos importados quedan cerrados como historial. No se modifican tus ciclos activos ni se reemplazan sesiones previas. El Excel no proporciona siempre RIR ni velocidad: esos campos quedarán sin información, no se inventarán.</p>
+    <div class="form-actions"><button class="btn secondary" type="button" data-action="close-modal">Cancelar</button><button class="btn" type="submit">Revisar e importar</button></div>
+  </form>`);
 }
 function hideModal() {modalRoot.innerHTML='';}
 function cycleModal(id) {
@@ -201,6 +247,7 @@ function makeExtra() {return {weight:'',reps:'',rir:2};}
 function handleAction(button) {
   const act=button.dataset.action,id=button.dataset.id;
   if (act==='close-modal'){hideModal();return;}
+  if (act==='pick-excel'){document.getElementById('excel-upload')?.click();return;}
   if (act==='go-train') return setPage('entrenar');
   if (act==='go-cycles') return setPage('ciclos');
   if (act==='go-history') return setPage('historial');
@@ -233,6 +280,23 @@ function handleAction(button) {
 }
 function handleForm(form) {
   const f=new FormData(form);const id=form.dataset.id;
+  if(form.dataset.form==='excel-import'){
+    if(!excelPreview){toast('Volvé a seleccionar el Excel.');return;}
+    try {
+      const mappings={};
+      for(const info of excelPreview.scan.sheets)if(info.count>0)mappings[info.index]=String(f.get('sheet-map-'+info.index)||'');
+      const result=planBilboImport(state,excelPreview.scan,{
+        mappings,fingerprint:excelPreview.fingerprint,
+        undatedDate:f.has('useDate')?String(f.get('referenceDate')||''):null
+      });
+      if(!result.added){toast('No hay series nuevas: todas están duplicadas o no tienen fecha.');return;}
+      const message=`Se incorporarán ${result.added} series y ${result.newCycles} ciclos históricos. ${result.duplicates} duplicados omitidos; ${result.missingDate} sin fecha omitidos. No se sobrescribirán tus datos. ¿Confirmar?`;
+      if(!confirmAction(message))return;
+      if(!saveState(result.state))throw new Error('No se pudo guardar la importación. No se modificó el historial.');
+      state=result.state;excelPreview=null;hideModal();toast(`Se importaron ${result.added} series correctamente`);setPage('historial');
+    }catch(error){toast(error.message||'Error al guardar el Excel.');}
+    return;
+  }
   if(form.dataset.form==='preferences') {
     state.settings.userName=String(f.get('userName')||'').trim().slice(0,40);
     state.settings.restSeconds=Math.max(30,Math.min(1200,number(f.get('restSeconds'),150)));
@@ -285,6 +349,7 @@ document.addEventListener('change', async event=>{
   const el=event.target;
   if(el.dataset.filter==='history'){selectedHistoryDay=el.value;render();}
   if(el.dataset.filter==='chart'){selectedChart=el.value;render();}
+  if(el.id==='excel-upload' && el.files?.[0]){const file=el.files[0];el.value='';await loadExcelPreview(file);return;}
   if(el.id==='backup-file' && el.files?.[0]){
     try {
       if(el.files[0].size>12*1024*1024)throw new Error('El respaldo supera los 12 MB');
