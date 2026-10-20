@@ -1,5 +1,5 @@
-const CACHE = 'bilbopocket-shell-v2';
-const SHELL = ['./', './index.html', './styles.css', './app.js', './core.js', './store.js', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
+const CACHE = 'bilbopocket-shell-v3';
+const SHELL = ['./', './index.html', './styles.css', './app.js', './core.js', './store.js', './excel-reader.js', './excel-import.js', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
 self.addEventListener('install', event => { event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', event => { event.waitUntil(Promise.all([caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))), self.clients.claim()])); });
 self.addEventListener('fetch', event => {
